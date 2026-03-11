@@ -1,7 +1,3 @@
-네, 요청하신 대로 KILOGAS 파이프라인 매뉴얼의 영문 버전을 작성해 드립니다. README 파일이나 영문 위키 문서로 바로 활용하실 수 있도록 구성했습니다.
-
----
-
 # 🌌 KILOGAS Data Products Pipeline User Manual
 
 ## 1. Overview
