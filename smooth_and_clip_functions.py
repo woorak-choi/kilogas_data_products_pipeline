@@ -147,27 +147,27 @@ class KILOGAS_clip:
 
             if self.spec_res == 10:
                 if not os.path.exists(self.savepath + 'by_galaxy/' + self.galaxy):
-                    os.mkdir(self.savepath + 'by_galaxy/' + self.galaxy)
+                    os.makedirs(self.savepath + 'by_galaxy/' + self.galaxy, exist_ok=True)
                 if not os.path.exists(self.savepath + 'by_galaxy/' + self.galaxy + '/10kms'):
-                    os.mkdir(self.savepath + 'by_galaxy/' + self.galaxy + '/10kms')
+                    os.makedirs(self.savepath + 'by_galaxy/' + self.galaxy + '/10kms', exist_ok=True)
                 mask_hdu.writeto(self.savepath + 'by_galaxy/' + self.galaxy + '/10kms/' + self.galaxy + '_mask_cube.fits', overwrite=True) 
 
                 if not os.path.exists(self.savepath + 'by_product/cubes'):
-                    os.mkdir(self.savepath + 'by_product/cubes')
+                    os.makedirs(self.savepath + 'by_product/cubes', exist_ok=True)
                 if not os.path.exists(self.savepath + 'by_product/cubes/' + '10kms'):
-                    os.mkdir(self.savepath + 'by_product/cubes/' + '10kms')
+                    os.makedirs(self.savepath + 'by_product/cubes/' + '10kms', exist_ok=True)
                 mask_hdu.writeto(self.savepath + 'by_product/cubes/' + '10kms/' + self.galaxy + '_mask_cube.fits', overwrite=True)
             elif self.spec_res == 30:
                 if not os.path.exists(self.savepath + 'by_galaxy/' + self.galaxy):
-                    os.mkdir(self.savepath + 'by_galaxy/' + self.galaxy)
+                    os.makedirs(self.savepath + 'by_galaxy/' + self.galaxy, exist_ok=True)
                 if not os.path.exists(self.savepath + 'by_galaxy/' + self.galaxy + '/30kms'):
-                    os.mkdir(self.savepath + 'by_galaxy/' + self.galaxy + '/30kms')
+                    os.makedirs(self.savepath + 'by_galaxy/' + self.galaxy + '/30kms', exist_ok=True)
                 mask_hdu.writeto(self.savepath + 'by_galaxy/' + self.galaxy + '/30kms/' + self.galaxy + '_mask_cube.fits', overwrite=True) 
 
                 if not os.path.exists(self.savepath + 'by_product/cubes'):
-                    os.mkdir(self.savepath + 'by_product/cubes')
+                    os.makedirs(self.savepath + 'by_product/cubes', exist_ok=True)
                 if not os.path.exists(self.savepath + 'by_product/cubes/' + '30kms'):
-                    os.mkdir(self.savepath + 'by_product/cubes/' + '30kms')
+                    os.makedirs(self.savepath + 'by_product/cubes/' + '30kms', exist_ok=True)
                 mask_hdu.writeto(self.savepath + 'by_product/cubes/' + '30kms/' + self.galaxy + '_mask_cube.fits', overwrite=True)
 
         emiscube_pbcorr[mask == 0] = 0

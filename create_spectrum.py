@@ -398,6 +398,8 @@ def plot_spectrum(
                 savepath + "by_product/spectrum/30kms/" + galaxy + "_spectrum.pdf",
                 bbox_inches="tight",
             )
+            
+    plt.close(fig)
 
 
 def get_all_spectra(
@@ -465,22 +467,22 @@ def get_all_spectra(
         # exist
         if spec_res == 10:
             if not os.path.exists(save_path + "by_galaxy/" + galaxy):
-                os.mkdir(save_path + "by_galaxy/" + galaxy)
+                os.makedirs(save_path + "by_galaxy/" + galaxy, exist_ok=True)
             if not os.path.exists(save_path + "by_product/spectrum"):
-                os.mkdir(save_path + "by_product/spectrum")
+                os.makedirs(save_path + "by_product/spectrum", exist_ok=True)
             if not os.path.exists(save_path + "by_galaxy/" + galaxy + "/10kms"):
-                os.mkdir(save_path + "by_galaxy/" + galaxy + "/10kms")
+                os.makedirs(save_path + "by_galaxy/" + galaxy + "/10kms", exist_ok=True)
             if not os.path.exists(save_path + "by_product/spectrum/10kms"):
-                os.mkdir(save_path + "by_product/spectrum/10kms")
+                os.makedirs(save_path + "by_product/spectrum/10kms", exist_ok=True)
         elif spec_res == 30:
             if not os.path.exists(save_path + "by_galaxy/" + galaxy):
-                os.mkdir(save_path + "by_galaxy/" + galaxy)
+                os.makedirs(save_path + "by_galaxy/" + galaxy, exist_ok=True)
             if not os.path.exists(save_path + "by_product/spectrum"):
-                os.mkdir(save_path + "by_product/spectrum")
+                os.makedirs(save_path + "by_product/spectrum", exist_ok=True)
             if not os.path.exists(save_path + "by_galaxy/" + galaxy + "/30kms"):
-                os.mkdir(save_path + "by_galaxy/" + galaxy + "/30kms")
+                os.makedirs(save_path + "by_galaxy/" + galaxy + "/30kms", exist_ok=True)
             if not os.path.exists(save_path + "by_product/spectrum/30kms"):
-                os.mkdir(save_path + "by_product/spectrum/30kms")
+                os.makedirs(save_path + "by_product/spectrum/30kms", exist_ok=True)
 
         # Read in and open the data cube
         if spec_res == 10:
@@ -523,43 +525,44 @@ def get_all_spectra(
 
 
 if __name__ == "__main__":
-    
-    # NOTE: all hardcoded for now as it isn't really used, but can improve
-    # to take user input.
-    
     spec_res = 10
-
-    read_path = "/arc/projects/KILOGAS/cubes/v1.0/matched/"
-    save_path = "/arc/projects/KILOGAS/products/v1.1/matched/"
+    ifu_matched = True
+    version = 2.0
+    overwrite = True
+    print (version)
+    print (spec_res)
+    print (ifu_matched)
+    
+    if ifu_matched:
+        read_path = "/arc/projects/KILOGAS/cubes/v1.0/matched/"
+        save_path = "/arc/projects/KILOGAS/products/v" + str(version) + "/matched/"
+        save_path = "/arc/home/rock211/test_products/" + str(version) + "/matched/"
+    else:
+        read_path = "/arc/projects/KILOGAS/cubes/v1.0/nyquist/"
+        save_path = "/arc/projects/KILOGAS/products/v" + str(version) + "/original/"
+        save_path = "/arc/home/rock211/test_products/" + str(version) + "/original/"
 
     chans2do = "KGAS_chans2do_v_optical_Sept25.csv"
     glob_cat = "KILOGAS_global_catalog_FWHM.fits"
 
-    targets = [
-        "KGAS73",
-        "KGAS128",
-        "KGAS184",
-        "KGAS255",
-        "KGAS262",
-        "KGAS288",
-        "KGAS328",
-        "KGAS371",
-        "KGAS397",
-    ]
-
-    target_id = np.genfromtxt(
-        chans2do, delimiter=",", skip_header=1, usecols=[0], dtype=int
-    )
-
+    target_id = np.genfromtxt(chans2do, delimiter=",", skip_header=1, usecols=[0], dtype=int)
     if spec_res == 10:
-        detected = np.genfromtxt(
-            chans2do, delimiter=",", skip_header=1, usecols=[6], dtype=bool
-        )
+        detected = np.genfromtxt(chans2do, delimiter=",", skip_header=1, usecols=[6], dtype=bool)
     elif spec_res == 30:
-        detected = np.genfromtxt(
-            chans2do, delimiter=",", skip_header=1, usecols=[7], dtype=bool
-        )
+        detected = np.genfromtxt(chans2do, delimiter=",", skip_header=1, usecols=[7], dtype=bool)
+
+    targets = ["KGAS" + str(t) for t in target_id]
+
+    # Custom override: specific galaxies
+    # targets = ['KGAS10', 'KGAS105', 'KGAS108']
 
     get_all_spectra(
-        read_path, save_path, targets, target_id, detected, chans2do, glob_cat, spec_res
+        read_path=read_path,
+        save_path=save_path,
+        targets=targets,
+        target_id=target_id,
+        detected=detected,
+        chans2do=chans2do,
+        glob_cat=glob_cat,
+        spec_res=spec_res,
     )

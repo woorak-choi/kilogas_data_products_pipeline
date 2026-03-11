@@ -183,9 +183,9 @@ def create_vel_array(galaxy, cube, spec_res=10, savepath=None):
                 vel_array,
             )
             if not os.path.exists(savepath + "by_product/spectrum"):
-                os.mkdir(savepath + "by_product/spectrum")
+                os.makedirs(savepath + "by_product/spectrum", exist_ok=True)
             if not os.path.exists(savepath + "by_product/spectrum/10kms"):
-                os.mkdir(savepath + "by_product/spectrum/10kms")
+                os.makedirs(savepath + "by_product/spectrum/10kms", exist_ok=True)
             np.save(
                 savepath + "by_product/spectrum/10kms/" + galaxy + "_vel_array.npy",
                 vel_array,
@@ -201,9 +201,9 @@ def create_vel_array(galaxy, cube, spec_res=10, savepath=None):
                 vel_array,
             )
             if not os.path.exists(savepath + "by_product/spectrum"):
-                os.mkdir(savepath + "by_product/spectrum")
+                os.makedirs(savepath + "by_product/spectrum", exist_ok=True)
             if not os.path.exists(savepath + "by_product/spectrum/30kms"):
-                os.mkdir(savepath + "by_product/spectrum/30kms")
+                os.makedirs(savepath + "by_product/spectrum/30kms", exist_ok=True)
             np.save(
                 savepath + "by_product/spectrum/30kms/" + galaxy + "_vel_array.npy",
                 vel_array,
@@ -387,9 +387,9 @@ def calc_moms(
     if savepath:
         if spec_res == 10:
             if not os.path.exists(savepath + "by_product/moment_maps"):
-                os.mkdir(savepath + "by_product/moment_maps")
+                os.makedirs(savepath + "by_product/moment_maps", exist_ok=True)
             if not os.path.exists(savepath + "by_product/moment_maps/10kms"):
-                os.mkdir(savepath + "by_product/moment_maps/10kms")
+                os.makedirs(savepath + "by_product/moment_maps/10kms", exist_ok=True)
             if units == "K km/s":
                 mom0_hdu.writeto(
                     savepath
@@ -479,9 +479,9 @@ def calc_moms(
 
         elif spec_res == 30:
             if not os.path.exists(savepath + "by_product/moment_maps"):
-                os.mkdir(savepath + "by_product/moment_maps")
+                os.makedirs(savepath + "by_product/moment_maps", exist_ok=True)
             if not os.path.exists(savepath + "by_product/moment_maps/30kms"):
-                os.mkdir(savepath + "by_product/moment_maps/30kms")
+                os.makedirs(savepath + "by_product/moment_maps/30kms", exist_ok=True)
             if units == "K km/s":
                 mom0_hdu.writeto(
                     savepath
@@ -1438,282 +1438,112 @@ def perform_moment_creation(
     ifu_match,
     spec_res=10,
     pb_thresh=40,
+    overwrite=True,
 ):
     for galaxy in detections:
         print(galaxy)
 
-        # Identify the filename for the clipped cubes of the galaxies to be processed
+        # Ensure output directories exist
+        if spec_res == 10:
+            os.makedirs(path + "by_galaxy/" + galaxy + "/10kms", exist_ok=True)
+            os.makedirs(path + "by_product/moment_maps/10kms", exist_ok=True)
+        elif spec_res == 30:
+            os.makedirs(path + "by_galaxy/" + galaxy + "/30kms", exist_ok=True)
+            os.makedirs(path + "by_product/moment_maps/30kms", exist_ok=True)
+
+        # Skip if already exists
+        if not overwrite:
+            check = path + 'by_galaxy/' + galaxy + '/' + str(spec_res) + 'kms/' + galaxy + '_Ico_K_kms-1.fits'
+            if os.path.exists(check):
+                print(f'  Skipping {galaxy} (exists, overwrite=False)')
+                continue
+
+        # ── Open cubes ONCE ──
         if spec_res == 10:
             cube = glob(path + "by_galaxy/" + galaxy + "/10kms/*clipped_cube.fits")
         elif spec_res == 30:
             cube = glob(path + "by_galaxy/" + galaxy + "/30kms/*clipped_cube.fits")
 
-        # Identify the filename for the corresponding raw datacubes
         if ifu_match:
-            cube_raw = glob(
-                data_path + galaxy + "/*" + str(spec_res) + "*.image.ifumatched.fits"
-            )
-        elif not ifu_match:
+            cube_raw = glob(data_path + galaxy + "/*" + str(spec_res) + "*.image.ifumatched.fits")
+        else:
             cube_raw = glob(data_path + galaxy + "/*" + str(spec_res) + "*.image.fits")
 
-        # Open both FITS images
         cube_fits = fits.open(cube[0])[0]
         cube_raw_fits = fits.open(cube_raw[0])[0]
-        
-        # Create the moment zero map with all four units, and the peak tempearture map
-        calc_moms(
-            cube_fits,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            units="K km/s",
-            alpha_co=4.35,
-            R21=0.7,
-        )
-        calc_moms(
-            cube_fits,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            units="K km/s pc^2",
-            alpha_co=4.35,
-            R21=0.7,
-        )
-        calc_moms(
-            cube_fits,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            units="Msol pc-2",
-            alpha_co=4.35,
-            R21=0.7,
-        )
-        calc_moms(
-            cube_fits,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            units="Msol/pix",
-            alpha_co=4.35,
-            R21=0.7,
-        )
-        calc_peak_t(cube_fits, galaxy, spec_res=spec_res, savepath=path)
-        
-        # Create the corresponding uncertainty maps
-        calc_uncs(
-            cube_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            clipped_cube=cube_fits,
-            units="K km/s",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=True,
-        )
-        calc_uncs(
-            cube_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            clipped_cube=cube_fits,
-            units="K km/s pc^2",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=True,
-        )
-        calc_uncs(
-            cube_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            clipped_cube=cube_fits,
-            units="Msol pc-2",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=True,
-        )
-        calc_uncs(
-            cube_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            clipped_cube=cube_fits,
-            units="Msol/pix",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=True,
-        )
 
-        # Create the corresponding upper limit maps
-        calc_uncs(
-            cube_raw_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            clipped_cube=cube_fits,
-            units="K km/s",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=False,
-            lw=30,
-            ul=3,
-            pb_thresh=pb_thresh,
-        )
-        calc_uncs(
-            cube_raw_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            clipped_cube=cube_fits,
-            units="K km/s pc^2",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=False,
-            lw=30,
-            ul=3,
-            pb_thresh=pb_thresh,
-        )
-        calc_uncs(
-            cube_raw_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            clipped_cube=cube_fits,
-            units="Msol pc-2",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=False,
-            lw=30,
-            ul=3,
-            pb_thresh=pb_thresh,
-        )
-        calc_uncs(
-            cube_raw_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            clipped_cube=cube_fits,
-            units="Msol/pix",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=False,
-            lw=30,
-            ul=3,
-            pb_thresh=pb_thresh,
-        )
+        # ── Create moment maps ONCE per unit, cache results ──
+        all_units = ["K km/s", "K km/s pc^2", "Msol pc-2", "Msol/pix"]
+        mom0_cache = {}
+
+        for units in all_units:
+            mom0_hdu, mom1_hdu, mom2_hdu = calc_moms(
+                cube_fits, galaxy, glob_cat=glob_cat,
+                spec_res=spec_res, savepath=path,
+                units=units, alpha_co=4.35, R21=0.7,
+            )
+            mom0_cache[units] = (mom0_hdu, mom1_hdu, mom2_hdu)
+
+        calc_peak_t(cube_fits, galaxy, spec_res=spec_res, savepath=path)
+
+        # ── Create uncertainty maps, passing cached mom0 ──
+        for units in all_units:
+            # Error maps (detection=True)
+            calc_uncs(
+                cube_fits, data_path, galaxy,
+                glob_cat=glob_cat, spec_res=spec_res,
+                savepath=path, ifu_match=ifu_match,
+                clipped_cube=cube_fits,
+                units=units, alpha_co=4.35, R21=0.7,
+                detection=True,
+            )
+
+        # ── Upper limit maps ──
+        for units in all_units:
+            calc_uncs(
+                cube_raw_fits, data_path, galaxy,
+                glob_cat=glob_cat, spec_res=spec_res,
+                savepath=path, ifu_match=ifu_match,
+                clipped_cube=cube_fits,
+                units=units, alpha_co=4.35, R21=0.7,
+                detection=False, lw=30, ul=3, pb_thresh=pb_thresh,
+            )
 
     for galaxy in non_detections:
         print(galaxy)
 
-        # Identify the path and filename of the data cube for the galaxy
-        if ifu_match:
-            cube = glob(
-                data_path + galaxy + "/*" + str(spec_res) + "*.image.ifumatched.fits"
-            )
+        # Ensure output directories exist
+        if spec_res == 10:
+            os.makedirs(path + "by_galaxy/" + galaxy + "/10kms", exist_ok=True)
+            os.makedirs(path + "by_product/moment_maps/10kms", exist_ok=True)
+        elif spec_res == 30:
+            os.makedirs(path + "by_galaxy/" + galaxy + "/30kms", exist_ok=True)
+            os.makedirs(path + "by_product/moment_maps/30kms", exist_ok=True)
 
+        if not overwrite:
+            check = path + 'by_galaxy/' + galaxy + '/' + str(spec_res) + 'kms/' + galaxy + '_Ico_K_kms-1_ul.fits'
+            if os.path.exists(check):
+                print(f'  Skipping {galaxy} (exists, overwrite=False)')
+                continue
+
+        if ifu_match:
+            cube = glob(data_path + galaxy + "/*" + str(spec_res) + "*.image.ifumatched.fits")
         elif not ifu_match:
             cube = glob(data_path + galaxy + "/*" + str(spec_res) + "*.image.fits")
 
-        # In a few cases no cube exists. These galaxies are skipped.
         try:
             cube_fits = fits.open(cube[0])[0]
         except:
             continue
 
-        # For non-detections create upper limit maps only
-        calc_uncs(
-            cube_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            units="K km/s",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=False,
-            lw=30,
-            ul=3,
-            pb_thresh=pb_thresh,
-        )
-        calc_uncs(
-            cube_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            units="K km/s pc^2",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=False,
-            lw=30,
-            ul=3,
-            pb_thresh=pb_thresh,
-        )
-        calc_uncs(
-            cube_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            units="Msol pc-2",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=False,
-            lw=30,
-            ul=3,
-            pb_thresh=pb_thresh,
-        )
-        calc_uncs(
-            cube_fits,
-            data_path,
-            galaxy,
-            glob_cat=glob_cat,
-            spec_res=spec_res,
-            savepath=path,
-            ifu_match=ifu_match,
-            units="Msol/pix",
-            alpha_co=4.35,
-            R21=0.7,
-            detection=False,
-            lw=30,
-            ul=3,
-            pb_thresh=pb_thresh,
-        )
+        for units in all_units:
+            calc_uncs(
+                cube_fits, data_path, galaxy,
+                glob_cat=glob_cat, spec_res=spec_res,
+                savepath=path, ifu_match=ifu_match,
+                units=units, alpha_co=4.35, R21=0.7,
+                detection=False, lw=30, ul=3, pb_thresh=pb_thresh,
+            )
 
 
 if __name__ == "__main__":

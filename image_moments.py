@@ -207,6 +207,8 @@ def moment_zero(
             + ".pdf",
             bbox_inches="tight",
         )
+        
+    plt.close(fig)
 
 
 def moment_1_2(mom, galaxy, moment, path, spec_res=10, savename=None, chans2do=None):
@@ -431,6 +433,7 @@ def moment_1_2(mom, galaxy, moment, path, spec_res=10, savename=None, chans2do=N
             + ".pdf",
             bbox_inches="tight",
         )
+    plt.close(fig)
 
 
 def perform_moment_imaging(glob_path, targets, chans2do, spec_res=10):
