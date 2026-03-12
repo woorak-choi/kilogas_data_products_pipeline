@@ -11,6 +11,7 @@
 """
 from matplotlib import pyplot as plt
 from matplotlib import colors
+import matplotlib as mpl # 상단에 추가
 
 ##############################################################################
 
@@ -102,8 +103,13 @@ def register_sauron_colormap():
 
     sauron = colors.LinearSegmentedColormap('sauron', cdict)
     sauron_r = colors.LinearSegmentedColormap('sauron_r', rdict)
-    plt.register_cmap(cmap=sauron)
-    plt.register_cmap(cmap=sauron_r)
+    try:
+        mpl.colormaps.register(cmap=sauron)
+        mpl.colormaps.register(cmap=sauron_r)
+    except AttributeError:
+        # 구버전 Matplotlib 대응
+        plt.register_cmap(cmap=sauron)
+        plt.register_cmap(cmap=sauron_r)
 
 ##############################################################################
 

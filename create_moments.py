@@ -588,57 +588,14 @@ def calc_uncs(
     pb_thresh=40,
     detection=True,
     clipped_cube=None,
+    # ── [Added parameters for optimization] ──
+    cube_pb_corr=None,
+    cube_uncorr=None,
+    cached_moms=None,
 ):
     """
     Create uncertainty maps OR upper limit maps corresponding to the moment zero map.
-
-    Parameters
-    ----------
-    cube : FITS image
-        Contains the data cube and corresponding header..
-    path : string
-        Directory in which the products are stored.
-    galaxy : string
-        Name of the galaxy for which the map is created.
-    glob_cat : string
-        Filename of the KILOGAS global catalogue.
-    savepath : string
-        Path to the directory in which the maps should be saved.
-    ifu_match : bool
-        True if the data cube is matched to the IFU resolution and False if it
-        has the original resolution.
-    spec_res : float, optional
-        Spectral resolution of the data cube in km/s. Can be either 10 or 30.
-        The default is 10.
-    units : string, optional
-        Units of the map that is created. Options are 'Msol pc-2', 'Msol/pix',
-        'K km/s pc^2', and 'K km/s'.  The default is 'K km/s'.
-    alpha_co : float, optional
-        Value of the CO-to-H2 conversion factor to be used, in Msol/​(K km/s pc^2).
-        The default is 4.35.
-    R21 : float, optional
-        CO(2-1)/CO(1-0) intensity ratio. The default is 0.7.
-    lw : float, optional
-        Assumed line width for the upper limit maps in km/s. The default is 30.
-    ul : float, optional
-        The 'ul'sigma upper limit will be calculated. The default is 3.
-    pb_thresh : float, optional
-        Percentage of the max. primary beam response below which the maps will
-        be masked. The default is 40.
-    detection : bool, optional
-        True if the galaxy is detected, in this case an uncertainty map will be
-        produced. False if the galaxy is not detected, in this case an upper
-        limit map will be produced (note that this is historical and not the best
-        name for this variable, should be changed). The default is True.
-    clipped_cube : FITS file, optional
-        Contains a clipped version of the cube and corresponding header. If
-        provided, the rms that was used to clip the cube is adopted for the creation
-        of the uncertainty or upper limit map. The default is None.
-
-    Returns
-    -------
-    None.
-
+    (Optimized to accept pre-loaded cubes and cached moment maps to prevent duplicate I/O and compute)
     """
 
     # Calculate the number of channels by converting the cube into a boolean
@@ -650,176 +607,51 @@ def calc_uncs(
 
     N_map = np.sum(cube_bool, axis=0)
 
-    # Find the corresponding pb uncorrected cube
-    if ifu_match == True:
-        try:
-            path_pbcorr = (
-                path
-                + galaxy
-                + "/"
-                + galaxy
-                + "_co2-1_"
-                + str(spec_res)
-                + ".0kmps_12m.image.pbcor.ifumatched.fits"
-            )
-            path_uncorr = (
-                path
-                + galaxy
-                + "/"
-                + galaxy
-                + "_co2-1_"
-                + str(spec_res)
-                + ".0kmps_12m.image.ifumatched.fits"
-            )
-            cube_pb_corr = fits.open(path_pbcorr)[0]
-        except:
+    # ── [Optimization 1: Use pre-loaded cubes if available] ──
+    # If cubes are not passed as arguments, fall back to the original try-except file loading logic.
+    if cube_pb_corr is None or cube_uncorr is None:
+        if ifu_match == True:
             try:
-                path_pbcorr = (
-                    path
-                    + galaxy
-                    + "/"
-                    + galaxy
-                    + "_co2-1_"
-                    + str(spec_res)
-                    + ".0kmps_7m+12m.image.pbcor.ifumatched.fits"
-                )
-                path_uncorr = (
-                    path
-                    + galaxy
-                    + "/"
-                    + galaxy
-                    + "_co2-1_"
-                    + str(spec_res)
-                    + ".0kmps_7m+12m.image.ifumatched.fits"
-                )
+                path_pbcorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_12m.image.pbcor.ifumatched.fits"
+                path_uncorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_12m.image.ifumatched.fits"
                 cube_pb_corr = fits.open(path_pbcorr)[0]
             except:
                 try:
-                    path_pbcorr = (
-                        path
-                        + galaxy
-                        + "/"
-                        + galaxy
-                        + "_co2-1_"
-                        + str(spec_res)
-                        + ".0kmps_12m.contsub.image.pbcor.ifumatched.fits"
-                    )
-                    path_uncorr = (
-                        path
-                        + galaxy
-                        + "/"
-                        + galaxy
-                        + "_co2-1_"
-                        + str(spec_res)
-                        + ".0kmps_12m.contsub.image.ifumatched.fits"
-                    )
+                    path_pbcorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_7m+12m.image.pbcor.ifumatched.fits"
+                    path_uncorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_7m+12m.image.ifumatched.fits"
                     cube_pb_corr = fits.open(path_pbcorr)[0]
                 except:
-                    path_pbcorr = (
-                        path
-                        + galaxy
-                        + "/"
-                        + galaxy
-                        + "_co2-1_"
-                        + str(spec_res)
-                        + ".0kmps_7m+12m.contsub.image.pbcor.ifumatched.fits"
-                    )
-                    path_uncorr = (
-                        path
-                        + galaxy
-                        + "/"
-                        + galaxy
-                        + "_co2-1_"
-                        + str(spec_res)
-                        + ".0kmps_7m+12m.contsub.image.ifumatched.fits"
-                    )
-                    cube_pb_corr = fits.open(path_pbcorr)[0]
-    else:
-        try:
-            path_pbcorr = (
-                path
-                + galaxy
-                + "/"
-                + galaxy
-                + "_co2-1_"
-                + str(spec_res)
-                + ".0kmps_12m.image.pbcor.fits"
-            )
-            path_uncorr = (
-                path
-                + galaxy
-                + "/"
-                + galaxy
-                + "_co2-1_"
-                + str(spec_res)
-                + ".0kmps_12m.image.fits"
-            )
-            cube_pb_corr = fits.open(path_pbcorr)[0]
-        except:
+                    try:
+                        path_pbcorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_12m.contsub.image.pbcor.ifumatched.fits"
+                        path_uncorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_12m.contsub.image.ifumatched.fits"
+                        cube_pb_corr = fits.open(path_pbcorr)[0]
+                    except:
+                        path_pbcorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_7m+12m.contsub.image.pbcor.ifumatched.fits"
+                        path_uncorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_7m+12m.contsub.image.ifumatched.fits"
+                        cube_pb_corr = fits.open(path_pbcorr)[0]
+        else:
             try:
-                path_pbcorr = (
-                    path
-                    + galaxy
-                    + "/"
-                    + galaxy
-                    + "_co2-1_"
-                    + str(spec_res)
-                    + ".0kmps_7m+12m.image.pbcor.fits"
-                )
-                path_uncorr = (
-                    path
-                    + galaxy
-                    + "/"
-                    + galaxy
-                    + "_co2-1_"
-                    + str(spec_res)
-                    + ".0kmps_7m+12m.image.fits"
-                )
+                path_pbcorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_12m.image.pbcor.fits"
+                path_uncorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_12m.image.fits"
                 cube_pb_corr = fits.open(path_pbcorr)[0]
             except:
                 try:
-                    path_pbcorr = (
-                        path
-                        + galaxy
-                        + "/"
-                        + galaxy
-                        + "_co2-1_"
-                        + str(spec_res)
-                        + ".0kmps_12m.contsub.image.pbcor.fits"
-                    )
-                    path_uncorr = (
-                        path
-                        + galaxy
-                        + "/"
-                        + galaxy
-                        + "_co2-1_"
-                        + str(spec_res)
-                        + ".0kmps_12m.contsub.image.fits"
-                    )
+                    path_pbcorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_7m+12m.image.pbcor.fits"
+                    path_uncorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_7m+12m.image.fits"
                     cube_pb_corr = fits.open(path_pbcorr)[0]
                 except:
-                    path_pbcorr = (
-                        path
-                        + galaxy
-                        + "/"
-                        + galaxy
-                        + "_co2-1_"
-                        + str(spec_res)
-                        + ".0kmps_7m+12m.contsub.image.pbcor.fits"
-                    )
-                    path_uncorr = (
-                        path
-                        + galaxy
-                        + "/"
-                        + galaxy
-                        + "_co2-1_"
-                        + str(spec_res)
-                        + ".0kmps_7m+12m.contsub.image.fits"
-                    )
-                    cube_pb_corr = fits.open(path_pbcorr)[0]
+                    try:
+                        path_pbcorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_12m.contsub.image.pbcor.fits"
+                        path_uncorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_12m.contsub.image.fits"
+                        cube_pb_corr = fits.open(path_pbcorr)[0]
+                    except:
+                        path_pbcorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_7m+12m.contsub.image.pbcor.fits"
+                        path_uncorr = path + galaxy + "/" + galaxy + "_co2-1_" + str(spec_res) + ".0kmps_7m+12m.contsub.image.fits"
+                        cube_pb_corr = fits.open(path_pbcorr)[0]
 
-    # Use the pb uncorrected cube to calculate the pb response cube
-    cube_uncorr = fits.open(path_uncorr)[0]
+        # Use the pb uncorrected cube to calculate the pb response cube
+        cube_uncorr = fits.open(path_uncorr)[0]
+
     pb_cube = cube_pb_corr.copy()
     pb_cube.data = cube_uncorr.data / cube_pb_corr.data
     pb_cube.data[cube_bool.data != cube_bool.data] = np.nan
@@ -841,9 +673,6 @@ def calc_uncs(
         noise_map[np.nanmedian(pb_cube.data, axis=0) < pb_thresh / 100] = np.nan
 
     # Similarly to moment map creation, set redshift parameters needed for physical unit calculations
-
-    # NOTE: COULD MAKE THIS A SEPARATE FUNCTION WITH OPTIONAL COSMO PARAMETERS
-
     glob_tab = fits.open(glob_cat)[1]
     z = glob_tab.data["Z"][glob_tab.data["KGAS_ID"] == int(galaxy.split("KGAS")[1])][0]
     cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
@@ -882,17 +711,14 @@ def calc_uncs(
     mom0_uncertainty[np.isinf(mom0_uncertainty)] = np.nan
     mom0_uncertainty[mom0_uncertainty <= 0] = np.nan
 
-    # Convert the uncertainty or upper limit map to different units if requested.
-    # If "savepath" is provided the map is saved in this directory.
-
-    # NOTE THAT SIMILARLY TO THE MOMENT MAP CREATION THERE IS NO FAILSAFE FOR TYPOS
-    # OR WRONGLY PROVIDED UNITS SO ANY OF THAT WILL DEFAULT TO THE STANDARD UNITS
-    # OF 'K km s^-1'
-
+    # ── [Optimization 2: Prevent redundant calc_moms execution by using cached moment maps] ──
     if units == "Msol pc-2":
-        mom0_hdu, _, _ = calc_moms(
-            cube, galaxy, glob_cat, spec_res=spec_res, savepath=None, units="Msol pc-2"
-        )
+        if cached_moms is not None:
+            mom0_hdu = cached_moms[0]
+        else:
+            mom0_hdu, _, _ = calc_moms(
+                cube, galaxy, glob_cat, spec_res=spec_res, savepath=None, units="Msol pc-2"
+            )
         mom0_uncertainty *= alpha_co
         mom0_uncertainty /= R21
         mom0_uncertainty *= 1 + z
@@ -906,86 +732,31 @@ def calc_uncs(
 
         mom0_uncertainty_hdu = fits.PrimaryHDU(mom0_uncertainty, mom0_hdu.header)
         mom0_uncertainty_hdu.header["BTYPE"] = "mmol pc^-2 error"
-        mom0_uncertainty_hdu.header.comments[
-            "BTYPE"
-        ] = "Error mol. gas mass surf. dens."
+        mom0_uncertainty_hdu.header.comments["BTYPE"] = "Error mol. gas mass surf. dens."
         mom0_hdu.header["BUNIT"] = "Msun pc-2"
         mom0_hdu.header.comments["BUNIT"] = ""
 
         if detection:
             if spec_res == 10:
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/10kms/"
-                    + galaxy
-                    + "_mmol_pc-2_err.fits",
-                    overwrite=True,
-                )
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/10kms/"
-                    + galaxy
-                    + "_mmol_pc-2_err.fits",
-                    overwrite=True,
-                )
+                mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_mmol_pc-2_err.fits", overwrite=True)
+                mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_mmol_pc-2_err.fits", overwrite=True)
             elif spec_res == 30:
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/30kms/"
-                    + galaxy
-                    + "_mmol_pc-2_err.fits",
-                    overwrite=True,
-                )
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/30kms/"
-                    + galaxy
-                    + "_mmol_pc-2_err.fits",
-                    overwrite=True,
-                )
+                mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_mmol_pc-2_err.fits", overwrite=True)
+                mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_mmol_pc-2_err.fits", overwrite=True)
         elif spec_res == 10:
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_galaxy/"
-                + galaxy
-                + "/10kms/"
-                + galaxy
-                + "_mmol_pc-2_ul.fits",
-                overwrite=True,
-            )
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_product/moment_maps/10kms/"
-                + galaxy
-                + "_mmol_pc-2_ul.fits",
-                overwrite=True,
-            )
+            mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_mmol_pc-2_ul.fits", overwrite=True)
+            mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_mmol_pc-2_ul.fits", overwrite=True)
         elif spec_res == 30:
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_galaxy/"
-                + galaxy
-                + "/30kms/"
-                + galaxy
-                + "_mmol_pc-2_ul.fits",
-                overwrite=True,
-            )
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_product/moment_maps/30kms/"
-                + galaxy
-                + "_mmol_pc-2_ul.fits",
-                overwrite=True,
-            )
+            mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_mmol_pc-2_ul.fits", overwrite=True)
+            mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_mmol_pc-2_ul.fits", overwrite=True)
 
     elif units == "Msol/pix":
-        mom0_hdu, _, _ = calc_moms(
-            cube, galaxy, glob_cat, spec_res=spec_res, savepath=None, units="Msol/pix"
-        )
+        if cached_moms is not None:
+            mom0_hdu = cached_moms[0]
+        else:
+            mom0_hdu, _, _ = calc_moms(
+                cube, galaxy, glob_cat, spec_res=spec_res, savepath=None, units="Msol/pix"
+            )
 
         mom0_uncertainty *= alpha_co
         mom0_uncertainty /= R21
@@ -1000,80 +771,23 @@ def calc_uncs(
 
         if detection:
             if spec_res == 10:
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/10kms/"
-                    + galaxy
-                    + "_mmol_pix-1_err.fits",
-                    overwrite=True,
-                )
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/10kms/"
-                    + galaxy
-                    + "_mmol_pix-1_err.fits",
-                    overwrite=True,
-                )
+                mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_mmol_pix-1_err.fits", overwrite=True)
+                mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_mmol_pix-1_err.fits", overwrite=True)
             elif spec_res == 30:
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/30kms/"
-                    + galaxy
-                    + "_mmol_pix-1_err.fits",
-                    overwrite=True,
-                )
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/30kms/"
-                    + galaxy
-                    + "_mmol_pix-1_err.fits",
-                    overwrite=True,
-                )
+                mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_mmol_pix-1_err.fits", overwrite=True)
+                mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_mmol_pix-1_err.fits", overwrite=True)
         elif spec_res == 10:
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_galaxy/"
-                + galaxy
-                + "/10kms/"
-                + galaxy
-                + "_mmol_pix-1_ul.fits",
-                overwrite=True,
-            )
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_product/moment_maps/10kms/"
-                + galaxy
-                + "_mmol_pix-1_ul.fits",
-                overwrite=True,
-            )
+            mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_mmol_pix-1_ul.fits", overwrite=True)
+            mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_mmol_pix-1_ul.fits", overwrite=True)
         elif spec_res == 30:
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_galaxy/"
-                + galaxy
-                + "/30kms/"
-                + galaxy
-                + "_mmol_pix-1_ul.fits",
-                overwrite=True,
-            )
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_product/moment_maps/30kms/"
-                + galaxy
-                + "_mmol_pix-1_ul.fits",
-                overwrite=True,
-            )
+            mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_mmol_pix-1_ul.fits", overwrite=True)
+            mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_mmol_pix-1_ul.fits", overwrite=True)
 
     elif units == "K km/s pc^2":
-        (
-            mom0_hdu,
-            _,
-            _,
-        ) = calc_moms(cube, galaxy, glob_cat, spec_res=spec_res, units="K km/s pc^2")
+        if cached_moms is not None:
+            mom0_hdu = cached_moms[0]
+        else:
+            mom0_hdu, _, _ = calc_moms(cube, galaxy, glob_cat, spec_res=spec_res, units="K km/s pc^2")
 
         mom0_uncertainty *= pc_to_pix
         mom0_uncertainty *= 1 + z
@@ -1086,76 +800,23 @@ def calc_uncs(
 
         if detection:
             if spec_res == 10:
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/10kms/"
-                    + galaxy
-                    + "_Lco_K_kms-1_pc2_err.fits",
-                    overwrite=True,
-                )
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/10kms/"
-                    + galaxy
-                    + "_Lco_K_kms-1_pc2_err.fits",
-                    overwrite=True,
-                )
+                mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_Lco_K_kms-1_pc2_err.fits", overwrite=True)
+                mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_Lco_K_kms-1_pc2_err.fits", overwrite=True)
             elif spec_res == 30:
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/30kms/"
-                    + galaxy
-                    + "_Lco_K_kms-1_pc2_err.fits",
-                    overwrite=True,
-                )
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/30kms/"
-                    + galaxy
-                    + "_Lco_K_kms-1_pc2_err.fits",
-                    overwrite=True,
-                )
+                mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_Lco_K_kms-1_pc2_err.fits", overwrite=True)
+                mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_Lco_K_kms-1_pc2_err.fits", overwrite=True)
         elif spec_res == 10:
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_galaxy/"
-                + galaxy
-                + "/10kms/"
-                + galaxy
-                + "_Lco_K_kms-1_pc2_ul.fits",
-                overwrite=True,
-            )
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_product/moment_maps/10kms/"
-                + galaxy
-                + "_Lco_K_kms-1_pc2_ul.fits",
-                overwrite=True,
-            )
+            mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_Lco_K_kms-1_pc2_ul.fits", overwrite=True)
+            mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_Lco_K_kms-1_pc2_ul.fits", overwrite=True)
         elif spec_res == 30:
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_galaxy/"
-                + galaxy
-                + "/30kms/"
-                + galaxy
-                + "_Lco_K_kms-1_pc2_ul.fits",
-                overwrite=True,
-            )
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_product/moment_maps/30kms/"
-                + galaxy
-                + "_Lco_K_kms-1_pc2_ul.fits",
-                overwrite=True,
-            )
+            mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_Lco_K_kms-1_pc2_ul.fits", overwrite=True)
+            mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_Lco_K_kms-1_pc2_ul.fits", overwrite=True)
 
     else:
-        mom0_hdu, mom1_hdu, mom2_hdu = calc_moms(cube, galaxy, glob_cat)
+        if cached_moms is not None:
+            mom0_hdu, mom1_hdu, mom2_hdu = cached_moms
+        else:
+            mom0_hdu, mom1_hdu, mom2_hdu = calc_moms(cube, galaxy, glob_cat)
 
         mom0_uncertainty_hdu = fits.PrimaryHDU(mom0_uncertainty, mom0_hdu.header)
         mom0_uncertainty_hdu.header["BTYPE"] = "Ico error"
@@ -1165,73 +826,17 @@ def calc_uncs(
 
         if detection:
             if spec_res == 10:
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/10kms/"
-                    + galaxy
-                    + "_Ico_K_kms-1_err.fits",
-                    overwrite=True,
-                )
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/10kms/"
-                    + galaxy
-                    + "_Ico_K_kms-1_err.fits",
-                    overwrite=True,
-                )
+                mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_Ico_K_kms-1_err.fits", overwrite=True)
+                mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_Ico_K_kms-1_err.fits", overwrite=True)
             elif spec_res == 30:
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/30kms/"
-                    + galaxy
-                    + "_Ico_K_kms-1_err.fits",
-                    overwrite=True,
-                )
-                mom0_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/30kms/"
-                    + galaxy
-                    + "_Ico_K_kms-1_err.fits",
-                    overwrite=True,
-                )
+                mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_Ico_K_kms-1_err.fits", overwrite=True)
+                mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_Ico_K_kms-1_err.fits", overwrite=True)
         elif spec_res == 10:
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_galaxy/"
-                + galaxy
-                + "/10kms/"
-                + galaxy
-                + "_Ico_K_kms-1_ul.fits",
-                overwrite=True,
-            )
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_product/moment_maps/10kms/"
-                + galaxy
-                + "_Ico_K_kms-1_ul.fits",
-                overwrite=True,
-            )
+            mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_Ico_K_kms-1_ul.fits", overwrite=True)
+            mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_Ico_K_kms-1_ul.fits", overwrite=True)
         elif spec_res == 30:
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_galaxy/"
-                + galaxy
-                + "/30kms/"
-                + galaxy
-                + "_Ico_K_kms-1_ul.fits",
-                overwrite=True,
-            )
-            mom0_uncertainty_hdu.writeto(
-                savepath
-                + "by_product/moment_maps/30kms/"
-                + galaxy
-                + "_Ico_K_kms-1_ul.fits",
-                overwrite=True,
-            )
+            mom0_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_Ico_K_kms-1_ul.fits", overwrite=True)
+            mom0_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_Ico_K_kms-1_ul.fits", overwrite=True)
 
         if detection:
             SN_map = mom0_hdu.data / mom0_uncertainty
@@ -1239,143 +844,50 @@ def calc_uncs(
             SN_hdu.header.pop("BUNIT")
 
             if spec_res == 10:
-                SN_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/10kms/"
-                    + galaxy
-                    + "_mom0_SN.fits",
-                    overwrite=True,
-                )
-                SN_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/10kms/"
-                    + galaxy
-                    + "_mom0_SN.fits",
-                    overwrite=True,
-                )
+                SN_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_mom0_SN.fits", overwrite=True)
+                SN_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_mom0_SN.fits", overwrite=True)
             elif spec_res == 30:
-                SN_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/30kms/"
-                    + galaxy
-                    + "_mom0_SN.fits",
-                    overwrite=True,
-                )
-                SN_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/30kms/"
-                    + galaxy
-                    + "_mom0_SN.fits",
-                    overwrite=True,
-                )
+                SN_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_mom0_SN.fits", overwrite=True)
+                SN_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_mom0_SN.fits", overwrite=True)
 
             if cube.header["CUNIT3"] != "km s-1":
                 mom1_uncertainty = (
                     N_map * abs(cube.header["CDELT3"] / 1000) / (2 * np.sqrt(3))
-                ) * (
-                    mom0_uncertainty / mom0_hdu.data
-                )  # Eqn 15 doc. Chris
+                ) * (mom0_uncertainty / mom0_hdu.data)
             else:
                 mom1_uncertainty = (
                     N_map * abs(cube.header["CDELT3"]) / (2 * np.sqrt(3))
-                ) * (
-                    mom0_uncertainty / mom0_hdu.data
-                )  # Eqn 15 doc. Chris
+                ) * (mom0_uncertainty / mom0_hdu.data)
+                
             mom1_uncertainty_hdu = fits.PrimaryHDU(mom1_uncertainty, mom1_hdu.header)
             mom1_uncertainty_hdu.header["BTYPE"] = "velocity error"
 
             if cube.header["CUNIT3"] != "km s-1":
                 mom2_uncertainty = (
-                    (
-                        (N_map * abs(cube.header["CDELT3"] / 1000)) ** 2
-                        / (8 * np.sqrt(5))
-                    )
+                    ((N_map * abs(cube.header["CDELT3"] / 1000)) ** 2 / (8 * np.sqrt(5)))
                     * (mom0_uncertainty / mom0_hdu.data)
                     * (mom2_hdu.data) ** -1
-                )  # Eqn 30 doc. Chris
+                )
             else:
                 mom2_uncertainty = (
                     ((N_map * abs(cube.header["CDELT3"])) ** 2 / (8 * np.sqrt(5)))
                     * (mom0_uncertainty / mom0_hdu.data)
                     * (mom2_hdu.data) ** -1
-                )  # Eqn 30 doc. Chris
+                )
 
             mom2_uncertainty_hdu = fits.PrimaryHDU(mom2_uncertainty, mom2_hdu.header)
             mom2_uncertainty_hdu.header["BTYPE"] = "obs. line width error"
 
             if spec_res == 10:
-                mom1_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/10kms/"
-                    + galaxy
-                    + "_mom1_err.fits",
-                    overwrite=True,
-                )
-                mom1_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/10kms/"
-                    + galaxy
-                    + "_mom1_err.fits",
-                    overwrite=True,
-                )
+                mom1_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_mom1_err.fits", overwrite=True)
+                mom1_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_mom1_err.fits", overwrite=True)
+                mom2_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/10kms/" + galaxy + "_mom2_err.fits", overwrite=True)
+                mom2_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/10kms/" + galaxy + "_mom2_err.fits", overwrite=True)
             elif spec_res == 30:
-                mom1_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/30kms/"
-                    + galaxy
-                    + "_mom1_err.fits",
-                    overwrite=True,
-                )
-                mom1_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/30kms/"
-                    + galaxy
-                    + "_mom1_err.fits",
-                    overwrite=True,
-                )
-
-            if spec_res == 10:
-                mom2_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/10kms/"
-                    + galaxy
-                    + "_mom2_err.fits",
-                    overwrite=True,
-                )
-                mom2_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/10kms/"
-                    + galaxy
-                    + "_mom2_err.fits",
-                    overwrite=True,
-                )
-            elif spec_res == 30:
-                mom2_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_galaxy/"
-                    + galaxy
-                    + "/30kms/"
-                    + galaxy
-                    + "_mom2_err.fits",
-                    overwrite=True,
-                )
-                mom2_uncertainty_hdu.writeto(
-                    savepath
-                    + "by_product/moment_maps/30kms/"
-                    + galaxy
-                    + "_mom2_err.fits",
-                    overwrite=True,
-                )
+                mom1_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_mom1_err.fits", overwrite=True)
+                mom1_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_mom1_err.fits", overwrite=True)
+                mom2_uncertainty_hdu.writeto(savepath + "by_galaxy/" + galaxy + "/30kms/" + galaxy + "_mom2_err.fits", overwrite=True)
+                mom2_uncertainty_hdu.writeto(savepath + "by_product/moment_maps/30kms/" + galaxy + "_mom2_err.fits", overwrite=True)
 
 
 def calc_peak_t(cube, galaxy, spec_res=10, savepath=None):
@@ -1440,6 +952,11 @@ def perform_moment_creation(
     pb_thresh=40,
     overwrite=True,
 ):
+    all_units = ["K km/s", "K km/s pc^2", "Msol pc-2", "Msol/pix"]
+
+    # ==========================================
+    # 1. Processing Detections
+    # ==========================================
     for galaxy in detections:
         print(galaxy)
 
@@ -1464,18 +981,34 @@ def perform_moment_creation(
         elif spec_res == 30:
             cube = glob(path + "by_galaxy/" + galaxy + "/30kms/*clipped_cube.fits")
 
+        # Fix for file matching bug (add _ before spec_res and .0kmps after)
         if ifu_match:
-            cube_raw = glob(data_path + galaxy + "/*" + str(spec_res) + "*.image.ifumatched.fits")
+            cube_raw = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.ifumatched.fits")
         else:
-            cube_raw = glob(data_path + galaxy + "/*" + str(spec_res) + "*.image.fits")
+            cube_raw = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.fits")
 
         cube_fits = fits.open(cube[0])[0]
         cube_raw_fits = fits.open(cube_raw[0])[0]
 
-        # ── Create moment maps ONCE per unit, cache results ──
-        all_units = ["K km/s", "K km/s pc^2", "Msol pc-2", "Msol/pix"]
-        mom0_cache = {}
+        # ── Pre-load pb_corr and uncorr cubes ONCE to prevent redundant I/O in calc_uncs ──
+        cube_pb_corr_cache = None
+        cube_uncorr_cache = None
+        try:
+            if ifu_match:
+                pb_files = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.pbcor.ifumatched.fits")
+                un_files = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.ifumatched.fits")
+            else:
+                pb_files = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.pbcor.fits")
+                un_files = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.fits")
+            
+            if pb_files and un_files:
+                cube_pb_corr_cache = fits.open(pb_files[0])[0]
+                cube_uncorr_cache = fits.open(un_files[0])[0]
+        except:
+            pass
 
+        # ── Create moment maps ONCE per unit, cache results ──
+        mom0_cache = {}
         for units in all_units:
             mom0_hdu, mom1_hdu, mom2_hdu = calc_moms(
                 cube_fits, galaxy, glob_cat=glob_cat,
@@ -1486,9 +1019,8 @@ def perform_moment_creation(
 
         calc_peak_t(cube_fits, galaxy, spec_res=spec_res, savepath=path)
 
-        # ── Create uncertainty maps, passing cached mom0 ──
+        # ── Create uncertainty maps (Error maps), passing cached mom0 ──
         for units in all_units:
-            # Error maps (detection=True)
             calc_uncs(
                 cube_fits, data_path, galaxy,
                 glob_cat=glob_cat, spec_res=spec_res,
@@ -1496,9 +1028,12 @@ def perform_moment_creation(
                 clipped_cube=cube_fits,
                 units=units, alpha_co=4.35, R21=0.7,
                 detection=True,
+                cube_pb_corr=cube_pb_corr_cache,
+                cube_uncorr=cube_uncorr_cache,
+                cached_moms=mom0_cache[units]
             )
 
-        # ── Upper limit maps ──
+        # ── Create Upper limit maps, passing cached mom0 ──
         for units in all_units:
             calc_uncs(
                 cube_raw_fits, data_path, galaxy,
@@ -1507,8 +1042,14 @@ def perform_moment_creation(
                 clipped_cube=cube_fits,
                 units=units, alpha_co=4.35, R21=0.7,
                 detection=False, lw=30, ul=3, pb_thresh=pb_thresh,
+                cube_pb_corr=cube_pb_corr_cache,
+                cube_uncorr=cube_uncorr_cache,
+                cached_moms=mom0_cache[units]
             )
 
+    # ==========================================
+    # 2. Processing Non-Detections
+    # ==========================================
     for galaxy in non_detections:
         print(galaxy)
 
@@ -1526,16 +1067,45 @@ def perform_moment_creation(
                 print(f'  Skipping {galaxy} (exists, overwrite=False)')
                 continue
 
+        # Fix for file matching bug
         if ifu_match:
-            cube = glob(data_path + galaxy + "/*" + str(spec_res) + "*.image.ifumatched.fits")
+            cube = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.ifumatched.fits")
         elif not ifu_match:
-            cube = glob(data_path + galaxy + "/*" + str(spec_res) + "*.image.fits")
+            cube = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.fits")
 
         try:
             cube_fits = fits.open(cube[0])[0]
         except:
             continue
 
+        # ── Pre-load pb_corr and uncorr cubes ONCE ──
+        cube_pb_corr_cache = None
+        cube_uncorr_cache = None
+        try:
+            if ifu_match:
+                pb_files = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.pbcor.ifumatched.fits")
+                un_files = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.ifumatched.fits")
+            else:
+                pb_files = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.pbcor.fits")
+                un_files = glob(data_path + galaxy + "/*_" + str(spec_res) + ".0kmps*.image.fits")
+            
+            if pb_files and un_files:
+                cube_pb_corr_cache = fits.open(pb_files[0])[0]
+                cube_uncorr_cache = fits.open(un_files[0])[0]
+        except:
+            pass
+
+        # ── Calculate moment maps ONCE per unit for non-detections just to cache headers ──
+        mom0_cache_nd = {}
+        for units in all_units:
+            mom0_hdu, mom1_hdu, mom2_hdu = calc_moms(
+                cube_fits, galaxy, glob_cat=glob_cat,
+                spec_res=spec_res, savepath=None, # Do not save moment maps for non-detections
+                units=units, alpha_co=4.35, R21=0.7,
+            )
+            mom0_cache_nd[units] = (mom0_hdu, mom1_hdu, mom2_hdu)
+
+        # ── Create Upper limit maps using cached files and headers ──
         for units in all_units:
             calc_uncs(
                 cube_fits, data_path, galaxy,
@@ -1543,6 +1113,9 @@ def perform_moment_creation(
                 savepath=path, ifu_match=ifu_match,
                 units=units, alpha_co=4.35, R21=0.7,
                 detection=False, lw=30, ul=3, pb_thresh=pb_thresh,
+                cube_pb_corr=cube_pb_corr_cache,
+                cube_uncorr=cube_uncorr_cache,
+                cached_moms=mom0_cache_nd[units]
             )
 
 

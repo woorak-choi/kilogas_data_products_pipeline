@@ -24,7 +24,7 @@ if __name__ == "__main__":
     ifu_match = False
     local = False
     clear_save_directory = False
-    version = 2.0
+    version = 3.0
     spec_res = 10
     pb_thresh = 40
     prune_by_npix = None
@@ -67,6 +67,7 @@ if __name__ == "__main__":
         )
         glob_cat = "KILOGAS_global_catalog_FWHM.fits"
 
+    
     # Create lists of detections, non detections, and all targets depending on
     # how they are flagged in the global table.
     detections = [
@@ -77,15 +78,15 @@ if __name__ == "__main__":
     ]
     targets = ["KGAS" + str(target) for target in target_id]
 
-    # ── Custom override ──
-    # targets = ['KGAS10', 'KGAS105', 'KGAS108', 'KGAS130', 'KGAS230', 'KGAS300', 'KGAS102', 'KGAS104']
+    # # ── Custom override ──
+    # targets = ['KGAS10', 'KGAS105', 'KGAS108', 'KGAS109', 'KGAS110', 'KGAS130', 'KGAS230'
+    #            , 'KGAS300', 'KGAS302', 'KGAS305', 'KGAS307', 'KGAS308', 'KGAS309', 'KGAS330', 'KGAS410', 'KGAS430']
     
     # # targets 중에서 자동으로 detection/non-detection 분류
     # detections = [g for g in targets if g in detections]
     # non_detections = [g for g in targets if g in non_detections]
 
-    #print (detections)
-    #print (non_detections)
+
     
     # The above lists can be manually overwritten for debugging purposes or in
     # case products are made for specific galaxies

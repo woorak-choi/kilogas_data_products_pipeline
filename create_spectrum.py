@@ -440,7 +440,8 @@ def get_all_spectra(
 
     # Extract the galaxy names from this list
     # NOTE: WILL HAVE TO ADJUST IF CUBE FILENAMES OR PATH CHANGE
-    galaxies = list(set([f.split("/")[8].split("_")[0] for f in files]))
+    #galaxies = list(set([f.split("/")[8].split("_")[0] for f in files])) # Old version - Woorak
+    galaxies = list(set([os.path.basename(f).split("_")[0] for f in files]))
 
     # Read in the velocities corresponding to the first and last channels
     # containing line emission and store them in a dictionary

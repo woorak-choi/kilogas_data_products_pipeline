@@ -7,11 +7,20 @@ from sauron_colormap import register_sauron_colormap
 
 try:
     register_sauron_colormap()
-except:
-    pass
+except Exception as e:
+    print(f"Colormap registration failed: {e}") # 에러 메시지를 출력하도록 수정
+    
 from glob import glob
 from matplotlib.ticker import FuncFormatter
 import pandas as pd
+import os
+import shutil
+
+import matplotlib
+
+matplotlib.use("Agg")
+matplotlib.rcParams['text.usetex'] = False 
+matplotlib.rcParams['font.family'] = 'DejaVu Sans'  # ← 추가
 
 
 def moment_zero(
@@ -187,31 +196,27 @@ def moment_zero(
     plt.tight_layout()
 
     if savename:
-        plt.savefig(path + savename + ".png", bbox_inches="tight")
-        plt.savefig(
-            path.split("by_galaxy")[0]
-            + "by_product/moment_maps/"
-            + str(spec_res)
-            + "kms/"
-            + savename
-            + ".png",
-            bbox_inches="tight",
-        )
-        plt.savefig(path + savename + ".pdf", bbox_inches="tight")
-        plt.savefig(
-            path.split("by_galaxy")[0]
-            + "by_product/moment_maps/"
-            + str(spec_res)
-            + "kms/"
-            + savename
-            + ".pdf",
-            bbox_inches="tight",
-        )
+        # ── [Optimization 1: Render once, then copy to save time] ──
+        primary_png = path + savename + ".png"
+        primary_pdf = path + savename + ".pdf"
+        
+        secondary_dir = path.split("by_galaxy")[0] + "by_product/moment_maps/" + str(spec_res) + "kms/"
+        secondary_png = secondary_dir + savename + ".png"
+        secondary_pdf = secondary_dir + savename + ".pdf"
+
+        # Save (render) only ONCE
+        plt.savefig(primary_png, bbox_inches="tight")
+        plt.savefig(primary_pdf, bbox_inches="tight")
+
+        # Copy the rendered files to the secondary location (Extremely fast disk I/O)
+        os.makedirs(secondary_dir, exist_ok=True)
+        shutil.copy(primary_png, secondary_png)
+        shutil.copy(primary_pdf, secondary_pdf)
         
     plt.close(fig)
 
 
-def moment_1_2(mom, galaxy, moment, path, spec_res=10, savename=None, chans2do=None):
+def moment_1_2(mom, galaxy, moment, path, spec_res=10, savename=None, clipping_vels=None):
     """
     Creates images for the moment one and two maps and saves them to png and pdf.
 
@@ -313,22 +318,10 @@ def moment_1_2(mom, galaxy, moment, path, spec_res=10, savename=None, chans2do=N
             cbar.set_label(r"Observed $\sigma_v$ [km s$^{-1}$]")
 
     elif moment == 1:
-        # For the moment one map use the channels in which the line is detected
-        # as the velocity range for the colour map.
-        # NOTE: this still has to be optimised for the error map
-        if mom.header["BTYPE"] == "co_vel":
-            clipping_table = pd.read_csv(chans2do)
-            KGAS_ID = np.array(clipping_table["KGAS_ID"])
-            minchan_v = np.array(clipping_table["minchan_v"])
-            maxchan_v = np.array(clipping_table["maxchan_v"])
-            clipping_vels = {
-                "KGAS" + id.astype(str): [min, max]
-                for id, min, max in zip(KGAS_ID, minchan_v, maxchan_v)
-            }
-
+        # ── [Optimization 2: Use pre-loaded dictionary instead of reading CSV] ──
+        if mom.header["BTYPE"] == "co_vel" and clipping_vels is not None:
             vmin = clipping_vels[galaxy][0]
             vmax = clipping_vels[galaxy][1]
-
         else:
             vmin = 0
             vmax = 30
@@ -393,48 +386,24 @@ def moment_1_2(mom, galaxy, moment, path, spec_res=10, savename=None, chans2do=N
     plt.tight_layout()
 
     if savename:
-        plt.savefig(
-            path
-            + "by_galaxy/"
-            + galaxy
-            + "/"
-            + str(spec_res)
-            + "kms/"
-            + savename
-            + ".png",
-            bbox_inches="tight",
-        )
-        plt.savefig(
-            path
-            + "by_product/moment_maps/"
-            + str(spec_res)
-            + "kms/"
-            + savename
-            + ".png",
-            bbox_inches="tight",
-        )
-        plt.savefig(
-            path
-            + "by_galaxy/"
-            + galaxy
-            + "/"
-            + str(spec_res)
-            + "kms/"
-            + savename
-            + ".pdf",
-            bbox_inches="tight",
-        )
-        plt.savefig(
-            path
-            + "by_product/moment_maps/"
-            + str(spec_res)
-            + "kms/"
-            + savename
-            + ".pdf",
-            bbox_inches="tight",
-        )
-    plt.close(fig)
+        # ── [Optimization 1: Render once, then copy to save time] ──
+        primary_png = path + "by_galaxy/" + galaxy + "/" + str(spec_res) + "kms/" + savename + ".png"
+        primary_pdf = path + "by_galaxy/" + galaxy + "/" + str(spec_res) + "kms/" + savename + ".pdf"
+        
+        secondary_dir = path + "by_product/moment_maps/" + str(spec_res) + "kms/"
+        secondary_png = secondary_dir + savename + ".png"
+        secondary_pdf = secondary_dir + savename + ".pdf"
 
+        # Save (render) only ONCE
+        plt.savefig(primary_png, bbox_inches="tight")
+        plt.savefig(primary_pdf, bbox_inches="tight")
+
+        # Copy to the secondary location
+        os.makedirs(secondary_dir, exist_ok=True)
+        shutil.copy(primary_png, secondary_png)
+        shutil.copy(primary_pdf, secondary_pdf)
+        
+    plt.close(fig)
 
 def perform_moment_imaging(glob_path, targets, chans2do, spec_res=10):
     """
@@ -462,19 +431,30 @@ def perform_moment_imaging(glob_path, targets, chans2do, spec_res=10):
     # Find the relevant files and extract the corresponding galaxy name.
     # NOTE: this will break if the path to the products changes and needs to be
     # improved.
-    files = glob(glob_path + "by_galaxy/" + "**/")
-    galaxies = list(set([f.split("/")[8].split("_")[0] for f in files]))
+    # ── [Optimization 2: Read CSV ONCE before the loop to prevent redundant I/O] ──
+    clipping_vels = None
+    if chans2do and os.path.exists(chans2do):
+        clipping_table = pd.read_csv(chans2do)
+        KGAS_ID = np.array(clipping_table["KGAS_ID"])
+        minchan_v = np.array(clipping_table["minchan_v"])
+        maxchan_v = np.array(clipping_table["maxchan_v"])
+        clipping_vels = {
+            "KGAS" + str(id): [min_v, max_v]
+            for id, min_v, max_v in zip(KGAS_ID, minchan_v, maxchan_v)
+        }
+
+    # ── [Bug Fix: Safely extract galaxy names regardless of path depth] ──
+    files = glob(glob_path + "by_galaxy/*/")
+    galaxies = list(set([os.path.basename(f.rstrip("/")) for f in files]))
 
     # Loop over the list of galaxies and create the moment map images.
     for galaxy in galaxies:
-        # If the galaxy is not among the targets, skip it.
         if not galaxy in targets:
             continue
         else:
             print(galaxy)
 
         path = glob_path + "by_galaxy/" + galaxy + "/" + str(spec_res) + "kms/"
-
         # I sometimes switch this on if the code gets stuck so it doesn't start
         # remaking all the duplicate images.
         # if os.path.exists(path + galaxy + '_Ico_K_kms-1.png'):
@@ -551,7 +531,7 @@ def perform_moment_imaging(glob_path, targets, chans2do, spec_res=10):
                     moment=1,
                     path=glob_path,
                     spec_res=spec_res,
-                    chans2do=chans2do,
+                    clipping_vels=clipping_vels, # <--- 딕셔너리를 직접 전달!
                 )
             for mom2 in mom2s:
                 moment_1_2(
@@ -562,23 +542,25 @@ def perform_moment_imaging(glob_path, targets, chans2do, spec_res=10):
                     path=glob_path,
                     spec_res=spec_res,
                 )
-
-        except:
-            print(galaxy)
+        except Exception as e:
+            print(f"Error processing {galaxy}: {e}")
 
 
 if __name__ == "__main__":
     # NOTE: all hardcoded for now as it isn't really used, but can improve
     # to take user input.
 
-    version = 1.1
+    version = 3.0
     ifu_matched = True
-    spec_res = 10
+    spec_res = 30
 
     if ifu_matched:
         glob_path = "/arc/projects/KILOGAS/products/v" + str(version) + "/matched/"
+        glob_path = "/arc/home/rock211/test_products/" + str(version) + "/matched/"
     else:
-        "/arc/projects/KILOGAS/products/v" + str(version) + "/original/"
+        glob_path = "/arc/projects/KILOGAS/products/v" + str(version) + "/original/"
+        glob_path = "/arc/home/rock211/test_products/" + str(version) + "/original/"
+        
     targets = ["KGAS107"]
     chans2do = "KGAS_chans2do_v_optical_Sept25.csv"
 

@@ -199,7 +199,7 @@ def check_beam_sizes(
 
 if __name__ == '__main__':
     ifu_matched = False
-    version = 2.0
+    version = 3.0
 
     if ifu_matched:
         path = "/arc/projects/KILOGAS/products/v" + str(version) + "/matched/"
