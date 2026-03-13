@@ -21,11 +21,11 @@ import shutil
 
 if __name__ == "__main__":
     # Set parameters deciding which products are made for which cubes
-    ifu_match = False
+    ifu_match = True
     local = False
     clear_save_directory = False
     version = 3.0
-    spec_res = 10
+    spec_res = 30
     pb_thresh = 40
     prune_by_npix = None
 
@@ -79,8 +79,7 @@ if __name__ == "__main__":
     targets = ["KGAS" + str(target) for target in target_id]
 
     # # ── Custom override ──
-    # targets = ['KGAS10', 'KGAS105', 'KGAS108', 'KGAS109', 'KGAS110', 'KGAS130', 'KGAS230'
-    #            , 'KGAS300', 'KGAS302', 'KGAS305', 'KGAS307', 'KGAS308', 'KGAS309', 'KGAS330', 'KGAS410', 'KGAS430']
+    # targets = ['KGAS361']
     
     # # targets 중에서 자동으로 detection/non-detection 분류
     # detections = [g for g in targets if g in detections]
