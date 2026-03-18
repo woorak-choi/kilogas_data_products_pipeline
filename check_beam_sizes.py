@@ -199,14 +199,12 @@ def check_beam_sizes(
 
 if __name__ == '__main__':
     ifu_matched = False
-    version = 3.0
+    version = 1.2
 
     if ifu_matched:
         path = "/arc/projects/KILOGAS/products/v" + str(version) + "/matched/"
-        path = "/arc/home/rock211/test_products/" + str(version) + "/matched/"
     else:
         path = "/arc/projects/KILOGAS/products/v" + str(version) + "/original/"
-        path = "/arc/home/rock211/test_products/" + str(version) + "/original/"
 
     # Check upper limit products
     print("\n### Checking upper limit (UL) products ###\n")

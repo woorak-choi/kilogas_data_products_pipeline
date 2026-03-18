@@ -24,7 +24,7 @@ if __name__ == "__main__":
     ifu_match = True
     local = False
     clear_save_directory = False
-    version = 3.0
+    version = 1.2
     spec_res = 30
     pb_thresh = 40
     prune_by_npix = None
@@ -46,11 +46,9 @@ if __name__ == "__main__":
         if ifu_match:
             main_directory = "/arc/projects/KILOGAS/cubes/v1.0/matched/"
             save_path = "/arc/projects/KILOGAS/products/v" + str(version) + "/matched/"
-            save_path = "/arc/home/rock211/test_products/" + str(version) + "/matched/"
         else:
             main_directory = "/arc/projects/KILOGAS/cubes/v1.0/nyquist/"
             save_path = "/arc/projects/KILOGAS/products/v" + str(version) + "/original/"
-            save_path = "/arc/home/rock211/test_products/" + str(version) + "/original/"
         
 
         chans2do = "KGAS_chans2do_v_optical_Sept25.csv"

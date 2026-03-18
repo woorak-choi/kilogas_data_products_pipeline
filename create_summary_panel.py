@@ -1,10 +1,11 @@
 """
-create_summary_panel.py (UL Reference Zoom Version)
+create_summary_panel.py (UL Reference Zoom + PDF Save + Font Adjust)
 
-Creates a single summary figure per galaxy.
 Updates:
 - Zooms based specifically on the non-NaN extent of the Upper Limit (*_ul.fits) map.
-- Maintains a consistent field of view across all 9 panels.
+- Maintains a consistent field of view across all panels.
+- Saves both PNG and PDF, copying them to product directories.
+- Matches user-specified figsize and fontsize parameters.
 """
 
 import warnings
@@ -36,31 +37,22 @@ except:
 def _get_data_extent(map_dir, pad=1):
     """
     UL 맵(*_ul.fits)을 기준으로 유효한 데이터가 있는 픽셀 범위를 계산합니다.
-    이 범위는 모든 패널의 공통 FOV로 사용됩니다.
     """
-    # 상한값(UL) 파일만 특정해서 찾습니다.
     ul_files = glob(os.path.join(map_dir, "*_ul.fits"))
-    
     if not ul_files:
-        # UL 파일이 없으면 줌인을 수행하지 않음
         return None
         
     try:
-        # 첫 번째로 검색된 UL 파일을 엽니다.
         with fits.open(ul_files[0]) as h:
             data = h[0].data
-            # NaN이 아닌 유효한 데이터 포인트의 인덱스를 찾습니다.
             finite = np.where(np.isfinite(data))
             if len(finite[0]) > 0:
                 y_min, y_max = np.min(finite[0]), np.max(finite[0])
                 x_min, x_max = np.min(finite[1]), np.max(finite[1])
-                
-                # 계산된 범위에 여백(pad)을 더해 반환합니다.
                 return [x_min - pad, x_max + pad, y_min - pad, y_max + pad]
     except Exception as e:
         print(f"  Warning: Could not calculate extent from UL map for {map_dir}: {e}")
         return None
-    
     return None
 
 
@@ -74,7 +66,6 @@ def _add_beam(ax, header):
         bmaj_pix = bmaj / pixscale
         bmin_pix = bmin / pixscale
 
-        # 현재 줌이 적용된 화면 영역을 기준으로 빔 위치 결정
         xlim = ax.get_xlim()
         ylim = ax.get_ylim()
         
@@ -91,14 +82,20 @@ def _add_beam(ax, header):
 
 def _add_map_panel(fig, rect, fits_hdu, title, cmap='magma_r',
                    vmin=None, vmax=None, cbar_label='', extent=None):
-    """Add a single map panel with optional cropping (extent)."""
+    """Add a single map panel with specific fonts and cropping."""
     data = fits_hdu.data
     header = fits_hdu.header
     wcs_full = WCS(header, naxis=2)
 
     finite_data = data[np.isfinite(data)]
     if len(finite_data) == 0:
-        return None
+        # 데이터가 모두 NaN인 경우 안내 문구 출력
+        ax = fig.add_axes(rect, projection=wcs_full)
+        ax.text(0.5, 0.5, 'All pixels are NaN\n(No valid data)', 
+                transform=ax.transAxes, ha='center', va='center', 
+                fontsize=10, color='gray')
+        ax.set_title(title, fontsize=15, fontweight='bold')
+        return ax
 
     if vmin is None: vmin = np.nanmin(finite_data)
     if vmax is None: vmax = np.nanmax(finite_data)
@@ -107,7 +104,6 @@ def _add_map_panel(fig, rect, fits_hdu, title, cmap='magma_r',
     im = ax.imshow(data, origin='lower', cmap=cmap, vmin=vmin, vmax=vmax,
                    interpolation='nearest', aspect='equal')
 
-    # UL 맵 기준 범위 적용
     if extent:
         ax.set_xlim(extent[0], extent[1])
         ax.set_ylim(extent[2], extent[3])
@@ -129,6 +125,7 @@ def _add_map_panel(fig, rect, fits_hdu, title, cmap='magma_r',
 
 
 def _add_spectrum_panel(ax, galaxy, path, spec_res=10):
+    """Add the spectrum plot to an axes panel."""
     spec_file = glob(path + 'by_galaxy/' + galaxy + '/' + str(spec_res)
                      + 'kms/' + galaxy + '_spectrum.csv')
 
@@ -161,16 +158,13 @@ def _add_spectrum_panel(ax, galaxy, path, spec_res=10):
 def create_summary_detected(galaxy, path, chans2do, spec_res=10,
                              savepath=None, overwrite=True):
     if savepath is None: savepath = path
-    
-    # 덮어쓰기 체크
-    out_png = savepath + 'by_galaxy/' + galaxy + '/' + str(spec_res) + 'kms/' + galaxy + '_summary.png'
+    map_dir = path + 'by_galaxy/' + galaxy + '/' + str(spec_res) + 'kms/'
+    out_png = map_dir + galaxy + '_summary.png'
+
     if not overwrite and os.path.exists(out_png):
-        print(f'  Skipping {galaxy} (exists, overwrite=False)')
+        print(f'  Skipping summary for {galaxy} (exists, overwrite=False)')
         return
 
-    map_dir = path + 'by_galaxy/' + galaxy + '/' + str(spec_res) + 'kms/'
-    
-    # --- 핵심 수정: UL 맵을 기준으로 공통 extent 계산 ---
     common_extent = _get_data_extent(map_dir)
 
     map_configs = [
@@ -184,13 +178,13 @@ def create_summary_detected(galaxy, path, chans2do, spec_res=10,
         ('*Ico_K_kms-1_ul.fits', r'$I_{\rm CO}$ Upper Limit', 'magma_r', r'UL [K km s$^{-1}$]', None, None),
     ]
 
-    # Velocity range logic
     clipping_table = pd.read_csv(chans2do)
     kgasid = int(galaxy.split('KGAS')[1])
     row = clipping_table[clipping_table['KGAS_ID'] == kgasid]
     vmin_mom1 = row['minchan_v'].iloc[0] if len(row) > 0 else None
     vmax_mom1 = row['maxchan_v'].iloc[0] if len(row) > 0 else None
 
+    # Figure size and suptitle from user version
     fig = plt.figure(figsize=(19, 16))
     fig.suptitle(f"{galaxy}  ({spec_res} km/s)", fontsize=16, fontweight='bold', y=0.98)
 
@@ -214,14 +208,18 @@ def create_summary_detected(galaxy, path, chans2do, spec_res=10,
                     files = [f for f in files if all(x not in f for x in ['_err', '_ul', '_SN'])]
 
                 if files:
-                    hdu = fits.open(files[0])[0]
-                    v_min = vmin_mom1 if vmin_cfg == 'mom1' else vmin_cfg
-                    v_max = vmax_mom1 if vmax_cfg == 'mom1' else vmax_cfg
-                    if vmax_cfg == 'mom2': 
-                        v_max = min(100, np.nanmax(hdu.data[np.isfinite(hdu.data)]))
+                    try:
+                        hdu = fits.open(files[0])[0]
+                        v_min = vmin_mom1 if vmin_cfg == 'mom1' else vmin_cfg
+                        v_max = vmax_mom1 if vmax_cfg == 'mom1' else vmax_cfg
+                        if vmax_cfg == 'mom2': 
+                            v_max = min(100, np.nanmax(hdu.data[np.isfinite(hdu.data)]))
 
-                    _add_map_panel(fig, rect, hdu, title, cmap=cmap, vmin=v_min, vmax=v_max,
-                                   cbar_label=cbar_label, extent=common_extent)
+                        _add_map_panel(fig, rect, hdu, title, cmap=cmap, vmin=v_min, vmax=v_max,
+                                       cbar_label=cbar_label, extent=common_extent)
+                    except Exception as e:
+                        ax = fig.add_axes(rect)
+                        ax.text(0.5, 0.5, f'Error:\n{str(e)[:40]}', ha='center', va='center', fontsize=8, color='red')
                 else:
                     ax = fig.add_axes(rect); ax.text(0.5, 0.5, 'Not available', ha='center', va='center')
                     ax.set_title(title, fontsize=13, fontweight='bold')
@@ -230,8 +228,7 @@ def create_summary_detected(galaxy, path, chans2do, spec_res=10,
                 _add_spectrum_panel(ax, galaxy, path, spec_res=spec_res)
             panel_idx += 1
 
-    # Save
-
+    # Save logic including PDF
     outdir_gal = savepath + 'by_galaxy/' + galaxy + '/' + str(spec_res) + 'kms/'
     outdir_prod = savepath + 'by_product/summary/' + str(spec_res) + 'kms/'
     os.makedirs(outdir_gal, exist_ok=True)
@@ -239,7 +236,6 @@ def create_summary_detected(galaxy, path, chans2do, spec_res=10,
     
     primary_png = outdir_gal + galaxy + '_summary.png'
     primary_pdf = outdir_gal + galaxy + '_summary.pdf'
-    
     secondary_png = outdir_prod + galaxy + '_summary.png'
     secondary_pdf = outdir_prod + galaxy + '_summary.pdf'
 
@@ -284,7 +280,6 @@ def create_summary_nondetected(galaxy, path, spec_res=10, savepath=None, overwri
 
     primary_png = outdir_gal + galaxy + '_summary.png'
     primary_pdf = outdir_gal + galaxy + '_summary.pdf'
-    
     secondary_png = outdir_prod + galaxy + '_summary.png'
     secondary_pdf = outdir_prod + galaxy + '_summary.pdf'
 
@@ -298,9 +293,6 @@ def create_summary_nondetected(galaxy, path, spec_res=10, savepath=None, overwri
     print(f'  Summary panel saved for {galaxy} ({spec_res} km/s, non-detection)')
 
 
-
-    
-
 def perform_summary_imaging(path, detections, non_detections, chans2do,
                              spec_res=10, savepath=None, overwrite=True):
     print(f'Creating summary panels ({spec_res} km/s)...')
@@ -313,46 +305,29 @@ def perform_summary_imaging(path, detections, non_detections, chans2do,
 
 if __name__ == '__main__':
     spec_res = 10
-    ifu_matched = False
-    version = 3.0
+    ifu_matched = True
+    version = 1.2
     overwrite = True
 
-    print (version)
-    print (spec_res)
-    print (ifu_matched)
-    
     if ifu_matched:
         path = "/arc/projects/KILOGAS/products/v" + str(version) + "/matched/"
-        path = "/arc/home/rock211/test_products/" + str(version) + "/matched/"
     else:
         path = "/arc/projects/KILOGAS/products/v" + str(version) + "/original/"
-        path = "/arc/home/rock211/test_products/" + str(version) + "/original/"
 
     chans2do = "KGAS_chans2do_v_optical_Sept25.csv"
 
-    target_id = np.genfromtxt(chans2do, delimiter=',', skip_header=1,
-                               usecols=[0], dtype=int)
-    if spec_res == 10:
-        detected = np.genfromtxt(chans2do, delimiter=',', skip_header=1,
-                                  usecols=[6], dtype=bool)
-    elif spec_res == 30:
-        detected = np.genfromtxt(chans2do, delimiter=',', skip_header=1,
-                                  usecols=[7], dtype=bool)
+    target_id = np.genfromtxt(chans2do, delimiter=',', skip_header=1, usecols=[0], dtype=int)
+    col = 7 if spec_res == 30 else 6
+    detected = np.genfromtxt(chans2do, delimiter=',', skip_header=1, usecols=[col], dtype=bool)
 
     detections = ['KGAS' + str(t) for t, d in zip(target_id, detected) if d]
-    non_detections = ['KGAS' + str(t) for t, d in zip(target_id, detected)
-                      if not d]
+    non_detections = ['KGAS' + str(t) for t, d in zip(target_id, detected) if not d]
+
 
     # # Custom override: specific galaxies
     # targets = ['KGAS10', 'KGAS12', 'KGAS13', 'KGAS15', 'KGAS16', 'KGAS17']
     # detections = [g for g in targets if g in detections]
     # non_detections = [g for g in targets if g in non_detections]
 
-    perform_summary_imaging(
-        path=path,
-        detections=detections,
-        non_detections=non_detections,
-        chans2do=chans2do,
-        spec_res=spec_res,
-        overwrite=overwrite,
-    )
+    
+    perform_summary_imaging(path, detections, non_detections, chans2do, spec_res, overwrite=overwrite)
